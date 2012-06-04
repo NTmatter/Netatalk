@@ -40,4 +40,5 @@ noinst_HEADERS = \
 	fce_api.h \
 	standards.h \
 	iniparser.h \
-	dictionary.h
+	dictionary.h \
+	talloc.h
