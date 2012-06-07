@@ -41,4 +41,5 @@ noinst_HEADERS = \
 	standards.h \
 	iniparser.h \
 	dictionary.h \
-	talloc.h
+	talloc.h \
+	dalloc.h
