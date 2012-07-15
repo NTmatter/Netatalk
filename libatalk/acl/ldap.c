@@ -112,6 +112,7 @@ static int ldap_getattr_fromfilter_withbase_scope( const char *searchbase,
                                                    int scope,
                                                    ldapcon_t conflags,
                                                    char **result) {
+    // TODO TJ: Add parameter for binary passthrough of result data
     int ret;
     int ldaperr;
     int retrycount = 0;
@@ -203,6 +204,8 @@ retry:
         ret = -1;
         goto cleanup;
     }
+
+    // TODO TJ: Switch over to berval **ldap_get_values_len. Return binary content with length.
     attribute_values = ldap_get_values(ld, entry, attributes[0]);
     if (attribute_values == NULL) {
         LOG(log_error, logtype_default, "ldap: ldap_get_values error");
@@ -214,6 +217,7 @@ retry:
         attributes[0], attribute_values[0]);
 
     /* allocate result */
+    // TODO TJ: This should be moved into the calling function to conditionally handle Binary content
     *result = strdup(attribute_values[0]);
     if (*result == NULL) {
         LOG(log_error, logtype_default, "ldap: strdup error: %s",strerror(errno));
@@ -292,6 +296,10 @@ int ldap_getuuidfromname( const char *name, uuidtype_t type, char **uuid_string)
     } else  { /* type hopefully == UUID_USER */
         ret = ldap_getattr_fromfilter_withbase_scope( ldap_userbase, filter, attributes, ldap_userscope, KEEPALIVE, uuid_string);
     }
+
+    // TODO TJ: Convert to UUID String from binary representation, or just use strdup otherwise.
+    LOG(log_error, logtype_default, "ldap_getnamefromuuid: convert binary to uuid string? %d", ldap_uuid_binary);
+
     if (ret != 1)
         return -1;
     return 0;
@@ -316,6 +324,9 @@ int ldap_getnamefromuuid( const char *uuidstr, char **name, uuidtype_t *type) {
 
     if (!ldap_config_valid)
         return -1;
+
+    // TODO TJ: Convert UUID to binary representation for LDAP query
+    LOG(log_error, logtype_default, "ldap_getnamefromuuid: convert uuid to binary? %d", ldap_uuid_binary);
 
     /* make filter */
     len = snprintf( filter, 256, "%s=%s", ldap_uuid_attr, uuidstr);
