@@ -53,6 +53,7 @@ char *ldap_uuid_string;
 char *ldap_name_attr;
 char *ldap_group_attr;
 char *ldap_uid_attr;
+int  ldap_uuid_binary;
 
 struct ldap_pref ldap_prefs[] = {
     {&ldap_server,     "ldap server",      0, 0, -1},
@@ -68,6 +69,7 @@ struct ldap_pref ldap_prefs[] = {
     {&ldap_name_attr,  "ldap name attr",   0, 0, -1},
     {&ldap_group_attr, "ldap group attr",  0, 0, -1},
     {&ldap_uid_attr,   "ldap uid attr",    0, 0,  0},
+    {&ldap_uuid_binary,"ldap uuid binary", 1, 1,  0},
     {NULL,             NULL,               0, 0, -1}
 };
 
@@ -81,6 +83,8 @@ struct pref_array prefs_array[] = {
     {"ldap groupscope",  "base",   LDAP_SCOPE_BASE},
     {"ldap groupscope",  "one",    LDAP_SCOPE_ONELEVEL},
     {"ldap groupscope",  "sub",    LDAP_SCOPE_SUBTREE},
+    {"ldap uuid binary", "yes",    1},
+    {"ldap uuid binary", "no",     0},
     {NULL,               NULL,     0}
 };
 

@@ -333,6 +333,12 @@ Format of the uuid string in the directory\&. A series of x and \-, where every 
 Default: xxxxxxxx\-xxxx\-xxxx\-xxxx\-xxxxxxxxxxxx
 .RE
 .PP
+ldap uuid binary = \fIyes | no\fR \fB(G)\fR
+.RS 4
+LDAP stores UUID as a binary field. This is useful in conjunction with Active Directory's objectID field\&.
+.sp
+.RE
+.PP
 ldap group attr = \fIdn\fR \fB(G)\fR
 .RS 4
 Name of the LDAP attribute with the groups short name\&.
