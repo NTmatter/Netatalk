@@ -83,8 +83,8 @@ struct pref_array prefs_array[] = {
     {"ldap groupscope",  "base",   LDAP_SCOPE_BASE},
     {"ldap groupscope",  "one",    LDAP_SCOPE_ONELEVEL},
     {"ldap groupscope",  "sub",    LDAP_SCOPE_SUBTREE},
-    {"ldap uuid binary", "yes",    1},
-    {"ldap uuid binary", "no",     0},
+    {"ldap uuid binary", "yes",    1}, // TODO TJ: Change to "ad" and put into an enum LDAP_UUID_BINARY_AD
+    {"ldap uuid binary", "no",     0}, // TODO TJ: Put into a constant LDAP_UUID_STRING
     {NULL,               NULL,     0}
 };
 
@@ -121,7 +121,7 @@ static int ldap_getattr_fromfilter_withbase_scope( const char *searchbase,
     static LDAP *ld     = NULL;
     LDAPMessage* msg    = NULL;
     LDAPMessage* entry  = NULL;
-    char **attribute_values = NULL;
+    struct berval **attribute_values = NULL;
     struct timeval timeout;
 
     LOG(log_maxdebug, logtype_afpd,"ldap: BEGIN");
@@ -206,19 +206,25 @@ retry:
     }
 
     // TODO TJ: Switch over to berval **ldap_get_values_len. Return binary content with length.
-    attribute_values = ldap_get_values(ld, entry, attributes[0]);
+    attribute_values = ldap_get_values_len(ld, entry, attributes[0]);
     if (attribute_values == NULL) {
-        LOG(log_error, logtype_default, "ldap: ldap_get_values error");
+        LOG(log_error, logtype_default, "ldap: ldap_get_values_len error");
         ret = -1;
         goto cleanup;
     }
 
     LOG(log_maxdebug, logtype_afpd,"ldap: search result: %s: %s",
-        attributes[0], attribute_values[0]);
+        attributes[0], attribute_values[0]->bv_val);
 
     /* allocate result */
-    // TODO TJ: This should be moved into the calling function to conditionally handle Binary content
-    *result = strdup(attribute_values[0]);
+    if(ldap_uuid_binary) {
+        memcpy(result, attribute_values[0]->bv_val, attribute_values[0]->bv_len);
+    } else {
+        // Match existing behaviour. Also alleviates some segfaults, but not 100% reliable.
+        // Perhaps strndup may be a safer alternative as null termination is enforced.
+        *result = strdup(attribute_values[0]->bv_val);
+    }
+    LOG(log_maxdebug, logtype_default, "ldap: Got result of length %d", attribute_values[0]->bv_len);
     if (*result == NULL) {
         LOG(log_error, logtype_default, "ldap: strdup error: %s",strerror(errno));
         ret = -1;
@@ -227,7 +233,7 @@ retry:
 
 cleanup:
     if (attribute_values)
-        ldap_value_free(attribute_values);
+        ldap_value_free_len(attribute_values);
     /* FIXME: is there another way to free entry ? */
     while (entry != NULL)
         entry = ldap_next_entry(ld, entry);
@@ -298,7 +304,14 @@ int ldap_getuuidfromname( const char *name, uuidtype_t type, char **uuid_string)
     }
 
     // TODO TJ: Convert to UUID String from binary representation, or just use strdup otherwise.
-    LOG(log_error, logtype_default, "ldap_getnamefromuuid: convert binary to uuid string? %d", ldap_uuid_binary);
+    LOG(log_error, logtype_default, "ldap_getnamefromuuid: convert %d bytes to uuid string? %d", ret, ldap_uuid_binary);
+    if(ldap_uuid_binary) {
+        // A custom conversion will be necessary here, as uuid_{bin2string,string2bin} do not account for
+        // varying binary encodings from various external systems. Convert to a string, and let the rest of
+        // Netatalk use its own encoding undisturbed.
+        const char* placeholder_uuid = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEFFFF0000";
+        *uuid_string = strdup(placeholder_uuid);
+    }
 
     if (ret != 1)
         return -1;
