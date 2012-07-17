@@ -218,13 +218,14 @@ retry:
 
     /* allocate result */
     if(ldap_uuid_binary) {
+        LOG(log_maxdebug, logtype_default, "ldap: Copying %d bytes to output", attribute_values[0]->bv_len);
         memcpy(result, attribute_values[0]->bv_val, attribute_values[0]->bv_len);
     } else {
         // Match existing behaviour. Also alleviates some segfaults, but not 100% reliable.
         // Perhaps strndup may be a safer alternative as null termination is enforced.
         *result = strdup(attribute_values[0]->bv_val);
     }
-    LOG(log_maxdebug, logtype_default, "ldap: Got result of length %d", attribute_values[0]->bv_len);
+
     if (*result == NULL) {
         LOG(log_error, logtype_default, "ldap: strdup error: %s",strerror(errno));
         ret = -1;
@@ -304,13 +305,26 @@ int ldap_getuuidfromname( const char *name, uuidtype_t type, char **uuid_string)
     }
 
     // TODO TJ: Convert to UUID String from binary representation, or just use strdup otherwise.
-    LOG(log_error, logtype_default, "ldap_getnamefromuuid: convert %d bytes to uuid string? %d", ret, ldap_uuid_binary);
+    LOG(log_error, logtype_default, "ldap_getnamefromuuid: convert to uuid string? %d", ldap_uuid_binary);
     if(ldap_uuid_binary) {
         // A custom conversion will be necessary here, as uuid_{bin2string,string2bin} do not account for
         // varying binary encodings from various external systems. Convert to a string, and let the rest of
         // Netatalk use its own encoding undisturbed.
-        const char* placeholder_uuid = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEFFFF0000";
-        *uuid_string = strdup(placeholder_uuid);
+        uint32_t data1 = ((uint32_t*) uuid_string)[0];
+        uint16_t data2 = ((uint16_t*) uuid_string)[2];
+        uint16_t data3 = ((uint16_t*) uuid_string)[3];
+        uint64_t data4_raw = ((uint64_t*) uuid_string)[1];
+        uint64_t data4 = 0;
+        // Reverse bytes - be64toh might be a better idea
+        for(int i = 0; i < 8; i++) {
+            data4 <<= 8;
+            data4 |= ((data4_raw >> (8 * i)) & 0xFF);
+        }
+
+        *uuid_string = malloc(32 + 4 + 1);
+        snprintf(*uuid_string, 36, "%08X%04X%04X%04X%012llX",
+                data1, data2, data3, data4 >> 48, data4 & 0x0000FFFFFFFFFFFFLL);
+        LOG(log_error, logtype_default, "ldap_getnamefromuuid: uuid_string: %s", *uuid_string);
     }
 
     if (ret != 1)
