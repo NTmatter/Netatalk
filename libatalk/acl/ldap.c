@@ -218,12 +218,13 @@ retry:
 
     /* allocate result */
     if(ldap_uuid_binary) {
-        LOG(log_maxdebug, logtype_default, "ldap: Copying %d bytes to output", attribute_values[0]->bv_len);
-        memcpy(result, attribute_values[0]->bv_val, attribute_values[0]->bv_len);
+        LOG(log_maxdebug, logtype_default, "ldap: Copying %d bytes to output %p", attribute_values[0]->bv_len, result);
+        *result = malloc(attribute_values[0]->bv_len);
+        memcpy(*result, attribute_values[0]->bv_val, attribute_values[0]->bv_len);
     } else {
         // Match existing behaviour. Also alleviates some segfaults, but not 100% reliable.
         // Perhaps strndup may be a safer alternative as null termination is enforced.
-        *result = strdup(attribute_values[0]->bv_val);
+        *result = strndup(attribute_values[0]->bv_val, attribute_values[0]->bv_len);
     }
 
     if (*result == NULL) {
@@ -310,10 +311,10 @@ int ldap_getuuidfromname( const char *name, uuidtype_t type, char **uuid_string)
         // A custom conversion will be necessary here, as uuid_{bin2string,string2bin} do not account for
         // varying binary encodings from various external systems. Convert to a string, and let the rest of
         // Netatalk use its own encoding undisturbed.
-        uint32_t data1 = ((uint32_t*) uuid_string)[0];
-        uint16_t data2 = ((uint16_t*) uuid_string)[2];
-        uint16_t data3 = ((uint16_t*) uuid_string)[3];
-        uint64_t data4_raw = ((uint64_t*) uuid_string)[1];
+        uint32_t data1 = ((uint32_t*) *uuid_string)[0];
+        uint16_t data2 = ((uint16_t*) *uuid_string)[2];
+        uint16_t data3 = ((uint16_t*) *uuid_string)[3];
+        uint64_t data4_raw = ((uint64_t*) *uuid_string)[1];
         uint64_t data4 = 0;
         // Reverse bytes - be64toh might be a better idea
         for(int i = 0; i < 8; i++) {
@@ -322,8 +323,8 @@ int ldap_getuuidfromname( const char *name, uuidtype_t type, char **uuid_string)
         }
 
         *uuid_string = malloc(32 + 4 + 1);
-        snprintf(*uuid_string, 36, "%08X%04X%04X%04X%012llX",
-                data1, data2, data3, data4 >> 48, data4 & 0x0000FFFFFFFFFFFFLL);
+        snprintf(*uuid_string, 36, "%08X%04X%04X%04X%012lX",
+                data1, data2, data3, data4 >> 48, data4 & 0x0000FFFFFFFFFFFFL);
         LOG(log_error, logtype_default, "ldap_getnamefromuuid: uuid_string: %s", *uuid_string);
     }
 
@@ -354,9 +355,60 @@ int ldap_getnamefromuuid( const char *uuidstr, char **name, uuidtype_t *type) {
 
     // TODO TJ: Convert UUID to binary representation for LDAP query
     LOG(log_error, logtype_default, "ldap_getnamefromuuid: convert uuid to binary? %d", ldap_uuid_binary);
+    if(ldap_uuid_binary) {
+        // Filter out dashes
+        char* stripped = malloc(strlen(uuidstr));
+        int i = 0;
+        int s = 0;
+        char c;
+        while(c = uuidstr[i]) {
+            if((c >='a' && c <= 'f')
+                || (c >= 'A' && c <= 'F')
+                || (c >= '0' && c <= '9')) {
+                stripped[s++] = toupper(c);
+            }
+            i++;
+        }
 
-    /* make filter */
-    len = snprintf( filter, 256, "%s=%s", ldap_uuid_attr, uuidstr);
+        char* ldap_bytes = malloc(49);
+        i = 0;
+        // Data1 (uint32)
+        ldap_bytes[i++] = '\\'; ldap_bytes[i++] = stripped[6]; ldap_bytes[i++] = stripped[7]; // 3
+        ldap_bytes[i++] = '\\'; ldap_bytes[i++] = stripped[4]; ldap_bytes[i++] = stripped[5]; // 2
+        ldap_bytes[i++] = '\\'; ldap_bytes[i++] = stripped[2]; ldap_bytes[i++] = stripped[3]; // 1
+        ldap_bytes[i++] = '\\'; ldap_bytes[i++] = stripped[0]; ldap_bytes[i++] = stripped[1]; // 0
+        
+        // Data2 (uint16)
+        ldap_bytes[i++] = '\\'; ldap_bytes[i++] = stripped[10]; ldap_bytes[i++] = stripped[11]; // 5
+        ldap_bytes[i++] = '\\'; ldap_bytes[i++] = stripped[8]; ldap_bytes[i++] = stripped[9]; // 4
+
+        // Data3 (uint16)
+        ldap_bytes[i++] = '\\'; ldap_bytes[i++] = stripped[14]; ldap_bytes[i++] = stripped[15]; // 7
+        ldap_bytes[i++] = '\\'; ldap_bytes[i++] = stripped[12]; ldap_bytes[i++] = stripped[13]; // 6
+        
+
+        // Data4 (uint64)
+        ldap_bytes[i++] = '\\'; ldap_bytes[i++] = stripped[16]; ldap_bytes[i++] = stripped[17]; // 8
+        ldap_bytes[i++] = '\\'; ldap_bytes[i++] = stripped[18]; ldap_bytes[i++] = stripped[19]; // 9
+        ldap_bytes[i++] = '\\'; ldap_bytes[i++] = stripped[20]; ldap_bytes[i++] = stripped[21]; // 10
+        ldap_bytes[i++] = '\\'; ldap_bytes[i++] = stripped[22]; ldap_bytes[i++] = stripped[23]; // 11
+        ldap_bytes[i++] = '\\'; ldap_bytes[i++] = stripped[24]; ldap_bytes[i++] = stripped[25]; // 12
+        ldap_bytes[i++] = '\\'; ldap_bytes[i++] = stripped[26]; ldap_bytes[i++] = stripped[27]; // 13
+        ldap_bytes[i++] = '\\'; ldap_bytes[i++] = stripped[28]; ldap_bytes[i++] = stripped[29]; // 14
+        ldap_bytes[i++] = '\\'; ldap_bytes[i++] = stripped[30]; ldap_bytes[i++] = stripped[31]; // 15
+
+        // Terminator
+        ldap_bytes[i] = 0;
+
+        len = snprintf( filter, 256, "%s=%s", ldap_uuid_attr, ldap_bytes);
+
+        // Fix byte order
+        free(stripped);
+        free(ldap_bytes);
+    } else {
+        snprintf( filter, 256, "%s=%s", ldap_uuid_attr, uuidstr);
+    }
+
     if (len >= 256 || len == -1) {
         LOG(log_error, logtype_default, "ldap_getnamefromuuid: filter overflow:%d, \"%s\"", len, filter);
         return -1;
