@@ -803,6 +803,7 @@ static struct vol *creatvol(AFPObj *obj,
     /* Unicode Volume Name */
     /* Firstly convert name from unixcharset to UTF8-MAC */
     flags = CONV_IGNORE | CONV_ALLOW_SLASH;
+    tmpname = malloc(AFPVOL_U8MNAMELEN);
     tmpvlen = convert_charset(obj->options.unixcharset, CH_UTF8_MAC, 0, name, vlen, tmpname, AFPVOL_U8MNAMELEN, &flags);
     if (tmpvlen <= 0) {
         strcpy(tmpname, "???");
